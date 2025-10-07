@@ -1,10 +1,10 @@
-import os.path
-import os.path
+import os
 import re
 import pymysql
 import requests
 import datetime
 import logging
+import time
 from dingding import Dingding_Warning
 
 # 配置日志
@@ -28,8 +28,7 @@ class line_download:
         self.name = 'line_phone_record'
 
     # 查询需要下载录音的联通通话记录
-    def select_line_call(self, ):
-
+    def select_line_call(self):
         mysqldb = pymysql.connect(host=self.host, port=self.port, user=self.user, password=self.passwd,
                                   database=self.name)  # 打开数据库链接
         curs = mysqldb.cursor()
@@ -39,10 +38,14 @@ class line_download:
         date2 = date1 + datetime.timedelta(days=1)  # 结束时间
         print('开始下载{} 至 {}的联通录音'.format(date1, date2))
 
-        sql = "SELECT callType,displayNumber, calledNo, startTime, endTime, ringDuration, isSuccess, recordUrl FROM " \
-              "line_record_download_down_call_list WHERE callStartTime >= '{}' and callStartTime < '{}' " \
-              "and LENGTH(recordUrl) > 0 and isSuccess = 1".format(date1, date2)
-        curs.execute(sql)
+        sql = """
+            SELECT callType,displayNumber, calledNo, startTime, endTime, 
+                   ringDuration, isSuccess, recordUrl 
+            FROM line_record_download_down_call_list 
+            WHERE callStartTime >= %s and callStartTime < %s 
+              and LENGTH(recordUrl) > 0 and isSuccess = 1
+        """
+        curs.execute(sql, (date1, date2))
         list_a = curs.fetchall()
         for call in list_a:
             call = list(call)
@@ -63,7 +66,10 @@ class line_download:
     # 下载录音
     def record_download(self, url, root, name):
         max_retries = 3
-        timeout = 10
+        connect_timeout = 10  # 连接超时时间
+        read_timeout = 30  # 读取超时时间
+        retry_delay = 2  # 重试前等待秒数
+
         filepath = os.path.join(root, name)
         if not os.path.exists(root):
             os.makedirs(root)
@@ -73,7 +79,8 @@ class line_download:
             try:
                 if not os.path.exists(filepath):
                     head = {"Accept": "application/json, text/plain, */*"}
-                    r = requests.get(url, headers=head, timeout=timeout)
+                    # 分别设置连接和读取超时
+                    r = requests.get(url, headers=head, timeout=(connect_timeout, read_timeout))
 
                     if r.status_code == 200:
                         with open(filepath, 'wb') as f:
@@ -81,56 +88,102 @@ class line_download:
                         print(f'文件下载成功: {filepath}')
                         return True
                     else:
-                        print(f'下载失败，错误代码 {r.status_code}')
+                        print(f'下载失败，错误代码 {r.status_code}，URL: {url}')
                         retries += 1
-                        if retries == max_retries:
-                            print(f'重试次数已用尽，下载失败: {url}')
-                            error_message = f'重试次数已用尽，下载失败: {url}, 状态码: {r.status_code}'
-                            logging.error(error_message)  # 写入日志文件
-                            return False
+                        if retries < max_retries:
+                            time.sleep(retry_delay)
+                        continue
                 else:
                     print(f'文件已存在: {filepath}')
                     return True
-            except requests.RequestException as e:
+
+            except requests.exceptions.Timeout:
+                retries += 1
+                print(f'请求超时，正在重试 ({retries}/{max_retries})...')
+                if retries < max_retries:
+                    time.sleep(retry_delay)
+
+            except requests.exceptions.RequestException as e:
                 retries += 1
                 print(f'请求异常: {e}，正在重试 ({retries}/{max_retries})...')
-                if retries == max_retries:
-                    print(f'重试次数已用尽，下载失败: {url}')
-                    error_message = f'重试次数已用尽，下载失败: {url}, 状态码: {r.status_code}'
-                    logging.error(error_message)  # 写入日志文件
-                    return False
+                if retries < max_retries:
+                    time.sleep(retry_delay)
+
+            except Exception as e:
+                retries += 1
+                print(f'未知错误: {e}，正在重试 ({retries}/{max_retries})...')
+                if retries < max_retries:
+                    time.sleep(retry_delay)
+
+        # 达到最大重试次数仍未成功
+        error_message = f'重试次数已用尽，下载失败: {url}'
+        logging.error(error_message)
+        print(f'最终下载失败: {url}')
+        return False
 
     # 插入记录到数据库
     def insert_record(self, data_list):
-        m = 0
+        if not data_list:
+            print("没有新数据需要插入")
+            return
+
         mysqldb = pymysql.connect(host=self.host, port=self.port, user=self.user, password=self.passwd,
                                   database=self.name)  # 打开数据库链接
         curs = mysqldb.cursor()
-        for data in data_list:
-            data.pop(7)
-            sql_1 = "select count(*) from line_record_download_record_list where name = '{}'".format(data[8])
-            curs.execute(sql_1)  # 执行sql语句
-            fetchall = curs.fetchall()
-            n = fetchall[0][0]
-            if n == 0:
-                sql = """insert ignore into line_record_download_record_list
-                      (context, caller, callee, start_time, end_time, duration, call_type, file_path, name) VALUES {}""". \
-                    format(tuple(data))
-                curs.execute(sql)  # 执行sql语句
-                mysqldb.commit()  # 提交修改（用于增、删、改）
-                m += 1
-        curs.close()  # 关闭游标对象
-        mysqldb.close()  # 关闭链接
-        print('插入数据{}条'.format(m))
+
+        # 提取文件名列表用于去重检查
+        names = [data[8] for data in data_list]
+        placeholders = ','.join(['%s'] * len(names))
+
+        # 检查已存在的记录
+        sql_check = f"SELECT name FROM line_record_download_record_list WHERE name IN ({placeholders})"
+        curs.execute(sql_check, names)
+        existing_names = set(row[0] for row in curs.fetchall())
+
+        # 过滤掉已存在的记录
+        new_data = [
+            tuple(data[:7] + [os.path.join(data[8], data[9]), data[8]])  # 构造完整路径作为 file_path 字段
+            for data in data_list
+            if data[8] not in existing_names
+        ]
+
+        if not new_data:
+            print("所有记录均已存在，无需插入")
+            curs.close()
+            mysqldb.close()
+            return
+
+        # 批量插入
+        sql_insert = """
+            INSERT IGNORE INTO line_record_download_record_list 
+            (context, caller, callee, start_time, end_time, duration, call_type, file_path, name) 
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """
+        try:
+            curs.executemany(sql_insert, new_data)
+            mysqldb.commit()
+            print(f'成功批量插入 {len(new_data)} 条数据')
+        except Exception as e:
+            mysqldb.rollback()
+            print(f'批量插入失败: {e}')
+            logging.error(f'批量插入失败: {e}')
+        finally:
+            curs.close()
+            mysqldb.close()
 
     # 主函数
     def run(self):
         log_list = []
-        call_list = line_download.select_line_call(self)
-        for call in call_list:
-            if line_download.record_download(self, call[7], call[8], call[9]):
+        call_list = self.select_line_call()
+        total = len(call_list)
+
+        for idx, call in enumerate(call_list, 1):
+            print(f"[{idx}/{total}] 正在处理...")
+            if self.record_download(call[7], call[8], call[9]):
                 log_list.append(call)
-        line_download.insert_record(self, log_list)
+
+        self.insert_record(log_list)
+        print('全部下载及入库完成')
 
 
 def main():
