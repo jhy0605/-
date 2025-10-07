@@ -1,0 +1,128 @@
+[
+  {
+    "department": "203",
+    "ip": "10.10.100.203",
+    "shar": "\\\\10.10.100.203\\recordings2\\分公司手机录音",
+    "permissions": [
+      "JW\\record_syn",
+      "Admin@1234"
+    ]
+  },
+  {
+    "department": "东海4楼",
+    "ip": "192.168.50.3",
+    "shar": "\\\\192.168.50.3\\smb",
+    "permissions": [
+      "administrator",
+      "tianheDongpu.1"
+    ]
+  },
+  {
+    "department": "东海4楼",
+    "ip": "192.168.50.4",
+    "shar": "\\\\192.168.50.4\\smb",
+    "permissions": [
+      "administrator",
+      "tianheDongpu.1"
+    ]
+  },
+  {
+    "department": "东海4楼",
+    "ip": "172.17.50.47",
+    "shar": "\\\\172.17.50.47\\smb",
+    "permissions": [
+      "administrator",
+      "tianheDongpu.1"
+    ]
+  },
+  {
+    "department": "盟丰5楼",
+    "ip": "192.168.88.157",
+    "shar": "\\\\192.168.88.157\\smb",
+    "permissions": [
+      "administrator",
+      "tianheDongpu.1"
+    ]
+  },
+  {
+    "department": "盟丰5楼",
+    "ip": "192.168.91.189",
+    "shar": "\\\\192.168.91.189\\smb",
+    "permissions": [
+      "administrator",
+      "tianheDongpu.1"
+    ]
+  },
+  {
+    "department": "苏州分公司",
+    "ip": "192.168.80.151",
+    "shar": "\\\\192.168.80.151\\smb",
+    "permissions": [
+      "administrator",
+      "tianheDongpu.1"
+    ]
+  },
+  {
+    "department": "苏州分公司",
+    "ip": "192.168.80.159",
+    "shar": "\\\\192.168.80.159\\smb",
+    "permissions": [
+      "administrator",
+      "tianheDongpu.1"
+    ]
+  },
+  {
+    "department": "苏州分公司",
+    "ip": "192.168.81.96",
+    "shar": "\\\\192.168.81.96\\smb",
+    "permissions": [
+      "administrator",
+      "tianheDongpu.1"
+    ]
+  },
+  {
+    "department": "苏州分公司",
+    "ip": "192.168.82.59",
+    "shar": "\\\\192.168.82.59\\smb",
+    "permissions": [
+      "administrator",
+      "tianheDongpu.1"
+    ]
+  },
+  {
+    "department": "白云分公司",
+    "ip": "192.168.15.199",
+    "shar": "\\\\192.168.15.199\\小手机录音",
+    "permissions": [
+      "administrator",
+      "admin123.."
+    ]
+  },
+  {
+    "department": "得胜分公司",
+    "ip": "192.168.65.254",
+    "shar": "\\\\192.168.65.254\\手机录音",
+    "permissions": [
+      "JW\\record_syn",
+      "Admin@1234"
+    ]
+  },
+  {
+    "department": "长沙二部",
+    "ip": "192.168.115.245",
+    "shar": "\\\\192.168.115.245\\recordings",
+    "permissions": [
+      "record_syn",
+      "Admin@1234"
+    ]
+  },
+  {
+    "department": "湖北分公司",
+    "ip": "192.168.180.245",
+    "shar": "\\\\192.168.180.245\\recordings",
+    "permissions": [
+      "record_syn",
+      "Admin@1234"
+    ]
+  },
+]
