@@ -6,6 +6,7 @@ import datetime
 import logging
 import time
 from dingding import Dingding_Warning
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 配置日志
 logging.basicConfig(
@@ -17,9 +18,10 @@ logging.basicConfig(
 
 # 下载联通的录音
 class line_download:
-    def __init__(self):
+    def __init__(self, max_workers=5):
         self.str_time = ''
         self.download_path = r'\\10.10.100.203\recordings\网络电话录音\联通云录音'
+        self.max_workers = max_workers  # 最大线程数
 
         self.host = '10.10.100.81'
         self.port = 3306
@@ -63,8 +65,9 @@ class line_download:
         mysqldb.close()  # 关闭链接
         return record_index_list
 
-    # 下载录音
-    def record_download(self, url, root, name):
+    # 下载录音（静态方法供多线程调用）
+    @staticmethod
+    def download_single_file(url, root, name):
         max_retries = 3
         connect_timeout = 10  # 连接超时时间
         read_timeout = 30  # 读取超时时间
@@ -86,7 +89,7 @@ class line_download:
                         with open(filepath, 'wb') as f:
                             f.write(r.content)
                         print(f'文件下载成功: {filepath}')
-                        return True
+                        return True, None
                     else:
                         print(f'下载失败，错误代码 {r.status_code}，URL: {url}')
                         retries += 1
@@ -95,7 +98,7 @@ class line_download:
                         continue
                 else:
                     print(f'文件已存在: {filepath}')
-                    return True
+                    return True, None
 
             except requests.exceptions.Timeout:
                 retries += 1
@@ -119,7 +122,7 @@ class line_download:
         error_message = f'重试次数已用尽，下载失败: {url}'
         logging.error(error_message)
         print(f'最终下载失败: {url}')
-        return False
+        return False, error_message
 
     # 插入记录到数据库
     def insert_record(self, data_list):
@@ -177,10 +180,34 @@ class line_download:
         call_list = self.select_line_call()
         total = len(call_list)
 
-        for idx, call in enumerate(call_list, 1):
-            print(f"[{idx}/{total}] 正在处理...")
-            if self.record_download(call[7], call[8], call[9]):
-                log_list.append(call)
+        if total == 0:
+            print("没有需要下载的录音文件")
+            return
+
+        print(f"开始多线程下载，共{total}个文件，最大线程数: {self.max_workers}")
+
+        # 使用线程池进行多线程下载
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # 提交所有下载任务
+            future_to_call = {
+                executor.submit(self.download_single_file, call[7], call[8], call[9]): call
+                for call in call_list
+            }
+
+            # 处理完成的任务
+            completed = 0
+            for future in as_completed(future_to_call):
+                call = future_to_call[future]
+                try:
+                    success, error = future.result()
+                    completed += 1
+                    print(f"进度: {completed}/{total}")
+                    if success:
+                        log_list.append(call)
+                except Exception as exc:
+                    completed += 1
+                    print(f"下载任务异常 {call[7]}: {exc}")
+                    print(f"进度: {completed}/{total}")
 
         self.insert_record(log_list)
         print('全部下载及入库完成')
@@ -188,14 +215,14 @@ class line_download:
 
 def main():
     # 定义开始时间和结束时间
-    start_date = datetime.date(2025, 9, 25)  # 开始时间
-    end_date = datetime.date(2025, 10, 6)  # 结束时间
-    # start_date = datetime.datetime.today() + datetime.timedelta(days=-7)  # 开始时间
-    # end_date = datetime.datetime.today() + datetime.timedelta(days=-1)  # 结束时间
+    # start_date = datetime.date(2025, 9, 25)  # 开始时间
+    # end_date = datetime.date(2025, 10, 6)  # 结束时间
+    start_date = datetime.datetime.today() + datetime.timedelta(days=-7)  # 开始时间
+    end_date = datetime.datetime.today() + datetime.timedelta(days=-1)  # 结束时间
     while start_date <= end_date:
         date = (start_date.strftime("%Y-%m-%d"))  # 当天的日期
         start_date += datetime.timedelta(days=1)
-        LD = line_download()
+        LD = line_download(max_workers=10)  # 设置最大线程数为10
         LD.str_time = date
         LD.run()
 
